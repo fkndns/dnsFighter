@@ -508,6 +508,7 @@ function Irelia:Menu()
     self.Menu.combo:MenuElement({id = "qcombo", name = "Use [Q] in Combo", value = true, leftIcon = QIcon})
     self.Menu.combo:MenuElement({id = "qcombogap", name = "Use[Q] Minion GapCloser", value = true, leftIcon = QIcon})
     self.Menu.combo:MenuElement({id = "wcombo", name = "Use [W] in Combo", value = true, leftIcon = WIcon})
+    self.Menu.combo:MenuElement({id = "wcombohp", name = "[W] HP <=", value = 50, min = 5, max = 95, step = 5, identifier = "%", leftIcon = WIcon})
     self.Menu.combo:MenuElement({id = "ecombo", name = "Use [E] in Combo", value = true, leftIcon = EIcon})
     self.Menu.combo:MenuElement({id = "rcombo", name = "Use [R] in Combo", value = true, leftIcon = RIcon})
     self.Menu.combo:MenuElement({id = "rcombohc", name = "[R] HitChance >=", value = 0.5, min = 0.1, max = 1.0, step = 0.1})
@@ -646,8 +647,10 @@ function Irelia:Auto()
             self:QCombo1(enemy)
             self:QCombo3(enemy)
             self:RCombo(enemy)
-            self:ComboE1(enemy)
-            self:ComboE2(enemy)
+            --self:ComboE1(enemy)
+            --self:ComboE2(enemy)
+            self:ImmoE1(enemy)
+            self:ImmoE2(enemy)
             self:WKill(enemy)
         end
 
@@ -711,13 +714,37 @@ function Irelia:ComboE1(enemy)
 end
 
 function Irelia:ComboE2(enemy)
-    if ValidTarget(enemy, ERange - 100) and self:CanUse(_E, "Combo") and myHero:GetSpellData(_E).name == "IreliaE2" and self:CastingChecks() then
+    if ValidTarget(enemy, ERange - 100) and self:CanUse(_E, "Combo") and myHero:GetSpellData(_E).name == "IreliaE2" and self:CastingChecks() and myHero.attackData.state ~= 2 then
             local NextPos = GetUnitPositionNext(enemy)
             local Direction = Vector((enemy.pos-NextPos):Normalized())
             local CastSpot = enemy.pos - Direction * enemy.ms / 2
             if CastSpot ~= nil and GetDistance(myHero.pos, CastSpot) <= ERange - 100 then
                 Control.CastSpell(HK_E, CastSpot)
             end
+    end
+end
+
+function Irelia:ImmoE1(enemy)
+    if ValidTarget(enemy, ERange - 100) and self:CanUse(_E, "Combo") and myHero:GetSpellData(_E).name == "IreliaE" and self:CastingChecks() and IsImmobile(enemy) >= 0.2 and myHero.attackData.state ~= 2 and not BuffActive(enemy, PassiveMark) then
+        local RadAngle = 90 * math.pi / 180
+        local Direction = Vector((enemy.pos-myHero.pos):Normalized())
+        local EndDirection = Vector(Direction:Rotated(0, RadAngle, 0))
+        local CastSpot = enemy.pos - EndDirection * 200
+        if CastSpot ~= nil and GetDistance(myHero.pos, CastSpot) <= ERange - 100 then
+            Control.CastSpell(HK_E, CastSpot)
+        end
+    end
+end
+
+function Irelia:ImmoE2(enemy)
+    if ValidTarget(enemy, ERange - 100) and self:CanUse(_E, "Combo") and myHero:GetSpellData(_E).name == "IreliaE2" and self:CastingChecks() and IsImmobile(enemy) >= 0.2 and myHero.attackData.state ~= 2 then
+        local RadAngle = 270 * math.pi / 180
+        local Direction = Vector((enemy.pos-myHero.pos):Normalized())
+        local EndDirection = Vector(Direction:Rotated(0, RadAngle, 0))
+        local CastSpot = enemy.pos - EndDirection * 200
+        if CastSpot ~= nil and GetDistance(myHero.pos, CastSpot) <= ERange - 100 then
+            Control.CastSpell(HK_E, CastSpot)
+        end
     end
 end
 
@@ -734,7 +761,9 @@ function Irelia:QLaneClear(minion, allyminion)
     if ValidTarget(minion, QRange) and self:CanUse(_Q, "LaneClear") then
         local QDam = getdmg("Q", minion, myHero, 2, myHero:GetSpellData(_Q).level)
         if minion.health <= QDam and self:CastingChecks() and myHero.attackData.state ~= 2 then
-            if (IsUnderEnemyTurret(minion.pos) and IsUnderEnemyTurret(allyminion.pos) or not IsUnderEnemyTurret(minion.pos)) then
+            if IsUnderEnemyTurret(minion.pos) and not IsUnderEnemyTurret(allyminion.pos) then
+                return
+            else
                 Control.CastSpell(HK_Q, minion)
             end
         end
@@ -745,7 +774,9 @@ function Irelia:QLastHit(minion, allyminion)
     if ValidTarget(minion, QRange) and self:CanUse(_Q, "LastHit") then
         local QDam = getdmg("Q", minion, myHero, 2, myHero:GetSpellData(_Q).level)
         if minion.health <= QDam and self:CastingChecks() and myHero.attackData.state ~= 2 then
-            if (IsUnderEnemyTurret(minion.pos) and IsUnderEnemyTurret(allyminion.pos) or not IsUnderEnemyTurret(minion.pos)) then
+            if IsUnderEnemyTurret(minion.pos) and not IsUnderEnemyTurret(allyminion.pos) then
+                return
+            else
                 Control.CastSpell(HK_Q, minion)
             end
         end
