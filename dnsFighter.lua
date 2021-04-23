@@ -567,7 +567,7 @@ end
 function Irelia:Spells()
     WSpellData = {speed = math.huge, range = WRange, delay = 0.25, radius = 60, collision = {}, type = "linear"}
     ESpellData = {speed = math.huge, range = ERange - 50, delay = 0.4, radius = 60, collision = {}, type = "circular"}
-    RSpellData = {speed = 2000, range = RRange - 50, delay = 0.4, radius = 120, collision = {}, type = "linear"}
+    RSpellData = {speed = 2000, range = RRange - 50, delay = 0.4, radius = 60, collision = {}, type = "linear"}
 end
 
 function Irelia:Draws()
