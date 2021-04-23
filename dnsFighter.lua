@@ -460,15 +460,44 @@ local function GetAllyCount(range, pos)
     return count
 end
 
+local function dnsTargetSelector(unit, range, output, menVal)
+    local unitMRValue = unit.magicResist - (unit.magicResist * myHero.magicPenPercent) - myHero.magicPen
+    local unitMRMultiplier = unitMRValue / 100
+    local unitMREHP = unit.health * (1 / unitMRMultiplier) or 0
+    local unitARValue = unit.armor - (unit.armor * myHero.armorPenPercent) - myHero.armorPen
+    local unitARMultiplier = unitARValue / 100
+    local unitAREHP = unit.health * (1 / unitARMultiplier) or 0 
+    if ValidTarget(unit, range) then
+        if output == nil then
+            --PrintChat("Scuffed"..unit.charName)
+            return unit
+        else
+            if menVal == 1 then
+                if unit.health < output.health then
+                    --PrintChat("lowest Health "..unit.charName)
+                    return unit
+                end
+            elseif menVal == 2 then
+                if unit.totalDamage > output.totalDamage then
+                    --PrintChat("highest AD "..unit.charName)
+                    return unit
+                end
+            elseif menVal == 3 then
+                if unit.ap > output.ap then
+                    --PrintChat("highest AP  "..unit.charName)
+                    return unit
+                end
+            end
+        end
+    else
+        return nil
+    end
+    return output
+end
+
 class "Manager"
 
 function Manager:__init()
-    if myHero.charName == "Brand" then
-        DelayAction(function() self:LoadBrand() end, 1.05)
-    end
-    if myHero.charName == "Lux" then
-        DelayAction(function() self:LoadLux() end, 1.05)
-    end
     if myHero.charName == "Irelia" then
         DelayAction(function() self:LoadIrelia() end, 1.05)
     end
@@ -484,20 +513,22 @@ end
 class "Irelia"
 
 local EnemyLoaded = false
-local AARange = 200 + myHero.boundingRadius
+local AARange = 197 + myHero.boundingRadius
 local QRange = 532 + myHero.boundingRadius
 local WRange = 750 + myHero.boundingRadius
 local ERange = 780 + myHero.boundingRadius
-local RRange = 880 + myHero.boundingRadius
+local RRange = 870 + myHero.boundingRadius
 local E1Pos = nil
 local PassiveMark = "ireliamark"
+local StackBuff = "ireliapassivestacks"
+local StackBuffMax = "ireliapassivestacksmax"
 local WBuff = "ireliawdefense"
 local IreliaIcon = "https://www.proguides.com/public/media/rlocal/champion/thumbnail/39.png"
 local QIcon = "https://www.proguides.com/public/media/rlocal/champion/ability/thumbnail/IreliaQ.png"
 local WIcon = "https://www.proguides.com/public/media/rlocal/champion/ability/thumbnail/IreliaW.png"
 local EIcon = "https://www.proguides.com/public/media/rlocal/champion/ability/thumbnail/IreliaE.png"
 local RIcon = "https://www.proguides.com/public/media/rlocal/champion/ability/thumbnail/IreliaR.png"
-local WStart = nil
+
 
 
 function Irelia:Menu()
@@ -508,8 +539,8 @@ function Irelia:Menu()
     self.Menu.combo:MenuElement({id = "qcombo", name = "Use [Q] in Combo", value = true, leftIcon = QIcon})
     self.Menu.combo:MenuElement({id = "qcombogap", name = "Use[Q] Minion GapCloser", value = true, leftIcon = QIcon})
     self.Menu.combo:MenuElement({id = "wcombo", name = "Use [W] in Combo", value = true, leftIcon = WIcon})
-    self.Menu.combo:MenuElement({id = "wcombohp", name = "[W] HP <=", value = 50, min = 5, max = 95, step = 5, identifier = "%", leftIcon = WIcon})
     self.Menu.combo:MenuElement({id = "ecombo", name = "Use [E] in Combo", value = true, leftIcon = EIcon})
+    self.Menu.combo:MenuElement({id = "ecombohc", name = "[E] HitChance >=", value = 0.5, min = 0.1, max = 1.0, step = 0.1, leftIcon = EIcon})
     self.Menu.combo:MenuElement({id = "rcombo", name = "Use [R] in Combo", value = true, leftIcon = RIcon})
     self.Menu.combo:MenuElement({id = "rcombohc", name = "[R] HitChance >=", value = 0.5, min = 0.1, max = 1.0, step = 0.1})
     self.Menu.combo:MenuElement({id = "rcombocount", name = "[R] HitCount >=", value = 2, min = 1, max = 5, step = 1, leftIcon = RIcon})
@@ -528,13 +559,15 @@ function Irelia:Menu()
     self.Menu.draws:MenuElement({id = "edraw", name = "Draw [E] Range", value = false, leftIcon = EIcon})
     self.Menu.draws:MenuElement({id = "rdraw", name = "Draw [R] Range", value = false, leftIcon = RIcon})
 
-
+    -- Misc 
+    self.Menu:MenuElement({id = "misc", name = "Misc", type = MENU})
+    self.Menu.misc:MenuElement({id = "meleehelper", name = "MeleeHelper", value = false})
 end
 
 function Irelia:Spells()
-    WSpellData = {speed = math.huge, range = WRange, delay = 0.25, radius = 90, collision = {}, type = "linear"}
-    ESpellData = {speed = math.huge, range = ERange, delay = 0.5, radius = 70, collision = {}, type = "circular"}
-    RSpellData = {speed = 2000, range = RRange, delay = 0.4, radius = 160, collision = {}, type = "linear"}
+    WSpellData = {speed = math.huge, range = WRange, delay = 0.25, radius = 60, collision = {}, type = "linear"}
+    ESpellData = {speed = math.huge, range = ERange - 50, delay = 0.4, radius = 60, collision = {}, type = "circular"}
+    RSpellData = {speed = 2000, range = RRange - 50, delay = 0.4, radius = 120, collision = {}, type = "linear"}
 end
 
 function Irelia:Draws()
@@ -542,7 +575,7 @@ function Irelia:Draws()
         Draw.Circle(myHero, ERange, 2, Draw.Color(255, 255, 255, 255))
     end
     if self.Menu.draws.qdraw:Value() then
-        Draw.Circle(myHero, QRange, 2, Draw.Color(255, 255, 255, 0))
+        Draw.Circle(myHero, AARange, 2, Draw.Color(255, 255, 255, 0))
     end
     if self.Menu.draws.wdraw:Value() then
         Draw.Circle(myHero, WRange, 2, Draw.Color(255, 255, 0, 255))
@@ -554,7 +587,14 @@ end
 
 function Irelia:Tick()
     if _G.JustEvade and _G.JustEvade:Evading() or (_G.ExtLibEvade and _G.ExtLibEvade.Evading) or Game.IsChatOpen() or myHero.dead then return end
-    target = GetTarget(1000)
+    target = GetTarget(1500)
+    if target and ValidTarget(target) then
+        --PrintChat(target.pos:To2D())
+        --PrintChat(mousePos:To2D())
+        GaleMouseSpot = self:MoveHelper(target)
+    else
+        _G.SDK.Orbwalker.ForceMovement = nil
+    end
     CastingQ = myHero.activeSpell.name == "IreliaQ"
     CastingW = myHero.activeSpell.name == "IreliaW"
     CastingE = myHero.activeSpell.name == "IreliaE"
@@ -622,46 +662,43 @@ end
 
 function Irelia:Minions()
     local minions = _G.SDK.ObjectManager:GetEnemyMinions(QRange)
-    local allyminions = _G.SDK.ObjectManager:GetAllyMinions(QRange + 100)
     for i = 1, #minions do
-        for j = 1, #allyminions do
             local minion = minions[i]
-            local allyminion = allyminions[j]
             if Mode() == "Combo" then
-                self:QGap(minion)
-                self:QGap2(minion)
+                self:QBuffStack(minion)
             end
             if Mode() == "LaneClear" then
-                self:QLaneClear(minion, allyminion)
+                self:QLaneClear(minion)
             end
             if Mode() == "LastHit" then
-                self:QLastHit(minion, allyminion)
+                self:QLastHit(minion)
             end
-        end
     end
 end
 
 function Irelia:Auto()
     for i, enemy in pairs(EnemyHeroes) do
+        if aatarget ~= nil then
+            _G.SDK.Orbwalker.ForceTarget = aatarget
+        else
+            _G.SDK.Orbwalker.ForceTarget = nil
+        end
         if Mode() == "Combo" then
             self:QCombo1(enemy)
             self:QCombo3(enemy)
-            self:RCombo(enemy)
-            self:ComboE1(enemy)
-            self:ComboE2(enemy)
-            self:ImmoE1(enemy)
-            self:ImmoE2(enemy)
-            self:WKill(enemy)
         end
-
-    end
-    
+        self:QDodge(enemy)
+    end   
 end
 
 function Irelia:Logic()
     if target == nil then return end
-
     if Mode() == "Combo" then
+            self:ComboE1()
+            self:ComboE2()
+            self:WKill()
+            self:RCombo()
+
     end
 end
 
@@ -680,89 +717,86 @@ function Irelia:QCombo3(enemy)
     end
 end
 
-function Irelia:QGap(minion)
-    if ValidTarget(target, QRange * 2) and GetDistance(target.pos, myHero.pos) >= QRange + 100 and self:CanUse(_Q, "Combo2") then
-        if ValidTarget(minion, QRange) and GetDistance(minion.pos, target.pos) <= QRange then
+function Irelia:QBuffStack(minion)
+    local MinionQTarget = GetTarget(QRange + 400)
+    if MinionQTarget ~= nil and self:CanUse(_Q, "Combo") and self:CastingChecks() and myHero.attackData.state ~= 2 then
+        if ValidTarget(minion, QRange) and GetDistance(minion.pos, MinionQTarget.pos) <= 300 then
             local QDam = getdmg("Q", minion, myHero, 2, myHero:GetSpellData(_Q).level)
-            if minion.health <= QDam or BuffActive(minion, PassiveMark) and self:CastingChecks() and myHero.attackData.state ~= 2 then
+            if minion.health <= QDam or BuffActive(minion, PassiveMark) then
                 Control.CastSpell(HK_Q, minion)
             end
         end
     end
 end
 
-function Irelia:QGap2(minion)
-    if ValidTarget(target, QRange + 300) and GetDistance(myHero.pos, target.pos) >= AARange * 2 and self:CanUse(_Q, "Combo2") then
-        if ValidTarget(minion, QRange) and GetDistance(minion.pos, target.pos) <= AARange then
-            local QDam = getdmg("Q", minion, myHero, 2, myHero:GetSpellData(_Q).level)
-            if minion.health <= QDam or BuffActive(minion, PassiveMark) and self:CastingChecks() and myHero.attackData.state ~= 2 then
-                Control.CastSpell(HK_Q, minion)
+function Irelia:QDodge(enemy)
+    local minions = _G.SDK.ObjectManager:GetEnemyMinions(QRange)
+    for i = 1, #minions do
+        local minion = minions[i]
+        if self:CanUse(_Q, "Combo") and enemy.activeSpell.valid and enemy.isChanneling and enemy.activeSpell.spellWasCast then
+           -- PrintChat("1")
+            local placementPos = enemy.activeSpell.placementPos
+            local width = enemy.activeSpell.width
+            local spellLine = ClosestPointOnLineSegment(myHero.pos, enemy.pos, placementPos)
+            if GetDistance(myHero.pos, spellLine) <= width then
+                local spellLine2 = ClosestPointOnLineSegment(minion.pos, enemy.pos, placementPos)
+                if ValidTarget(minion, QRange) and GetDistance(minion.pos, spellLine2) >= 200 then
+                    local QDam = getdmg("Q", minion, myHero, 2, myHero:GetSpellData(_Q).level)
+                    if (minion.health <= QDam or BuffActive(minion, PassiveMark) or myHero.health / myHero.maxHealth <= 0.25) and self:CastingChecks() and myHero.attackData.state ~=2 then
+                        Control.CastSpell(HK_Q, minion)
+                       -- PrintChat("Dodged")
+                    end
+                end
             end
         end
     end
 end
 
-function Irelia:ComboE1(enemy)
-    if ValidTarget(enemy, ERange - 100) and self:CanUse(_E, "Combo") and myHero:GetSpellData(_E).name == "IreliaE" and self:CastingChecks() and myHero.attackData.state ~= 2 and not BuffActive(enemy, PassiveMark) then
-        local NextPos = GetUnitPositionNext(enemy)
-        local Direction = Vector((NextPos-enemy.pos):Normalized())
-        local CastSpot = enemy.pos - Direction * enemy.ms / 2
+
+function Irelia:ComboE1()
+    local e1target = GetTarget(ERange)
+    if e1target ~= nil and self:CanUse(_E, "Combo") and myHero:GetSpellData(_E).name == "IreliaE" and self:CastingChecks() and myHero.attackData.state ~= 2 and not BuffActive(e1target, PassiveMark) then
+        local NextPos = GetUnitPositionNext(e1target)
+        local Direction = Vector((NextPos-e1target.pos):Normalized())
+        local CastSpot = e1target.pos - Direction * e1target.ms / 2
         if CastSpot ~= nil and GetDistance(myHero.pos, CastSpot) <= ERange - 100 then
             Control.CastSpell(HK_E, CastSpot)
         end
     end 
 end
 
-function Irelia:ComboE2(enemy)
-    if ValidTarget(enemy, ERange - 100) and self:CanUse(_E, "Combo") and myHero:GetSpellData(_E).name == "IreliaE2" and self:CastingChecks() and myHero.attackData.state ~= 2 then
-            local NextPos = GetUnitPositionNext(enemy)
-            local Direction = Vector((enemy.pos-NextPos):Normalized())
-            local CastSpot = enemy.pos - Direction * enemy.ms / 2
-            if CastSpot ~= nil and GetDistance(myHero.pos, CastSpot) <= ERange - 100 then
-                Control.CastSpell(HK_E, CastSpot)
-            end
-    end
-end
-
-function Irelia:ImmoE1(enemy)
-    if ValidTarget(enemy, ERange - 100) and self:CanUse(_E, "Combo") and myHero:GetSpellData(_E).name == "IreliaE" and self:CastingChecks() and IsImmobile(enemy) >= 0.2 and myHero.attackData.state ~= 2 and not BuffActive(enemy, PassiveMark) then
-        local RadAngle = 90 * math.pi / 180
-        local Direction = Vector((enemy.pos-myHero.pos):Normalized())
-        local EndDirection = Vector(Direction:Rotated(0, RadAngle, 0))
-        local CastSpot = enemy.pos - EndDirection * 200
-        if CastSpot ~= nil and GetDistance(myHero.pos, CastSpot) <= ERange - 100 then
-            Control.CastSpell(HK_E, CastSpot)
+function Irelia:ComboE2()
+    local e2target = GetTarget(ERange)
+    if e2target ~= nil and self:CanUse(_E, "Combo") and myHero:GetSpellData(_E).name == "IreliaE2" and self:CastingChecks() and myHero.attackData.state ~= 2 then
+        local pred = _G.PremiumPrediction:GetPrediction(myHero, e2target, ESpellData)
+        if pred.CastPos and pred.HitChance >= self.Menu.combo.ecombohc:Value() then
+            Control.CastSpell(HK_E, pred.CastPos)
         end
     end
 end
 
-function Irelia:ImmoE2(enemy)
-    if ValidTarget(enemy, ERange - 100) and self:CanUse(_E, "Combo") and myHero:GetSpellData(_E).name == "IreliaE2" and self:CastingChecks() and IsImmobile(enemy) >= 0.2 and myHero.attackData.state ~= 2 then
-        local RadAngle = 270 * math.pi / 180
-        local Direction = Vector((enemy.pos-myHero.pos):Normalized())
-        local EndDirection = Vector(Direction:Rotated(0, RadAngle, 0))
-        local CastSpot = enemy.pos - EndDirection * 200
-        if CastSpot ~= nil and GetDistance(myHero.pos, CastSpot) <= ERange - 100 then
-            Control.CastSpell(HK_E, CastSpot)
-        end
-    end
-end
-
-function Irelia:RCombo(enemy)
-    if ValidTarget(enemy, RRange) and self:CanUse(_R, "Combo") and GetEnemyCount(300, enemy) >= self.Menu.combo.rcombocount:Value() and not BuffActive(enemy, PassiveMark) and not IsReady(_E) then
-        local pred = _G.PremiumPrediction:GetPrediction(myHero, enemy, RSpellData)
+function Irelia:RCombo()
+    local RTarget = GetTarget(RRange)
+    if RTarget ~= nil and self:CanUse(_R, "Combo") and GetEnemyCount(300, RTarget) >= self.Menu.combo.rcombocount:Value() and not BuffActive(RTarget, PassiveMark) and not IsReady(_E) then
+        local pred = _G.PremiumPrediction:GetPrediction(myHero, RTarget, RSpellData)
         if pred.CastPos and pred.HitChance >= self.Menu.combo.rcombohc:Value() and self:CastingChecks() and myHero.attackData.state ~= 2 then
                 Control.CastSpell(HK_R, pred.CastPos)
         end
     end
 end
 
-function Irelia:QLaneClear(minion, allyminion)
+function Irelia:QLaneClear(minion)
     if ValidTarget(minion, QRange) and self:CanUse(_Q, "LaneClear") then
         local QDam = getdmg("Q", minion, myHero, 2, myHero:GetSpellData(_Q).level)
         if minion.health <= QDam and self:CastingChecks() and myHero.attackData.state ~= 2 then
-            if IsUnderEnemyTurret(minion.pos) and not IsUnderEnemyTurret(allyminion.pos) then
-                return
+            if IsUnderEnemyTurret(minion.pos) then
+                local allyminions = _G.SDK.ObjectManager:GetAllyMinions(QRange + 300)
+                for i = 1, #allyminions do
+                    local allyminion = allyminions[i]
+                    if IsValid(allyminion) and IsUnderEnemyTurret(allyminion.pos) then
+                        Control.CastSpell(HK_Q, minion)
+                    end
+                end
             else
                 Control.CastSpell(HK_Q, minion)
             end
@@ -770,12 +804,18 @@ function Irelia:QLaneClear(minion, allyminion)
     end
 end
 
-function Irelia:QLastHit(minion, allyminion)
+function Irelia:QLastHit(minion)
     if ValidTarget(minion, QRange) and self:CanUse(_Q, "LastHit") then
         local QDam = getdmg("Q", minion, myHero, 2, myHero:GetSpellData(_Q).level)
         if minion.health <= QDam and self:CastingChecks() and myHero.attackData.state ~= 2 then
-            if IsUnderEnemyTurret(minion.pos) and not IsUnderEnemyTurret(allyminion.pos) then
-                return
+            if IsUnderEnemyTurret(minion.pos) then
+                local allyminions = _G.SDK.ObjectManager:GetAllyMinions(QRange + 300)
+                for i = 1, #allyminions do
+                    local allyminion = allyminions[i]
+                    if IsValid(allyminion) and IsUnderEnemyTurret(allyminion.pos) then
+                        Control.CastSpell(HK_Q, minion)
+                    end
+                end
             else
                 Control.CastSpell(HK_Q, minion)
             end
@@ -783,18 +823,63 @@ function Irelia:QLastHit(minion, allyminion)
     end
 end
 
-function Irelia:WKill(enemy)
-    if ValidTarget(enemy, WRange) and self:CanUse(_W, "Combo") and enemy.health / enemy.maxHealth <= 0.5 then
-        local QDam = getdmg("Q", enemy, myHero, 1, myHero:GetSpellData(_Q).level)
-        local WDam = getdmg("W", enemy, myHero, myHero:GetSpellData(_W).level)
+
+function Irelia:WKill()
+    local wtarget = GetTarget(WRange)
+    if wtarget ~= nil and self:CanUse(_W, "Combo") and wtarget.health / wtarget.maxHealth <= 0.5 then
+        local QDam = getdmg("Q", wtarget, myHero, 1, myHero:GetSpellData(_Q).level)
+        local WDam = getdmg("W", wtarget, myHero, myHero:GetSpellData(_W).level)
         local fulldam = QDam * 2 + WDam
-        if enemy.health <= fulldam and self:CastingChecks() and myHero.attackData.state ~= 2 then
-            local pred = _G.PremiumPrediction:GetPrediction(myHero, enemy, WSpellData)
+        if wtarget.health <= fulldam and self:CastingChecks() and myHero.attackData.state ~= 2 then
+            local pred = _G.PremiumPrediction:GetPrediction(myHero, wtarget, WSpellData)
             if pred.CastPos and pred.HitChance >= 0.5 then
                 Control.CastSpell(HK_W, pred.CastPos)
             end
         end
     end
+end
+
+function Irelia:MoveHelper(unit)
+    local EAARangel = _G.SDK.Data:GetAutoAttackRange(unit)
+    local MoveSpot = nil
+    local RangeDif = AARange - EAARangel
+    local ExtraRangeDist = RangeDif
+    local ExtraRangeChaseDist = RangeDif - 100
+
+    local ScanDirection = Vector((myHero.pos-mousePos):Normalized())
+    local ScanDistance = GetDistance(myHero.pos, unit.pos) * 0.8
+    local ScanSpot = myHero.pos - ScanDirection * ScanDistance
+    
+
+    local MouseDirection = Vector((unit.pos-ScanSpot):Normalized())
+    local MouseSpotDistance = EAARangel + ExtraRangeDist
+    if not IsFacing(unit) then
+        MouseSpotDistance = EAARangel + ExtraRangeChaseDist
+    end
+    if MouseSpotDistance > AARange then
+        MouseSpotDistance = AARange
+    end
+
+    local MouseSpot = unit.pos - MouseDirection * (MouseSpotDistance)
+    local MouseDistance = GetDistance(unit.pos, mousePos)
+    local GaleMouseSpotDirection = Vector((myHero.pos-MouseSpot):Normalized())
+    local GalemouseSpotDistance = GetDistance(myHero.pos, MouseSpot)
+    if GalemouseSpotDistance > 300 then
+        GalemouseSpotDistance = 300
+    end
+    local GaleMouseSpoty = myHero.pos - GaleMouseSpotDirection * GalemouseSpotDistance
+    MoveSpot = MouseSpot
+
+    if MoveSpot then
+        if GetDistance(myHero.pos, MoveSpot) < 50 or IsUnderEnemyTurret(MoveSpot) then
+            _G.SDK.Orbwalker.ForceMovement = nil
+        elseif self.Menu.misc.meleehelper:Value() and GetDistance(myHero.pos, unit.pos) <= AARange-50 and (Mode() == "Combo" or Mode() == "Harass") and self:CastingChecks() and MouseDistance < 750 then
+            _G.SDK.Orbwalker.ForceMovement = MoveSpot
+        else
+            _G.SDK.Orbwalker.ForceMovement = nil
+        end
+    end
+    return GaleMouseSpoty
 end
 
 function OnLoad() 
